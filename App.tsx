@@ -1,429 +1,284 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, {useState, useRef} from 'react';
 import {
   View,
   Text,
-  TextInput,
-  Pressable,
+  Image,
   StyleSheet,
-  useColorScheme,
-  StatusBar,
+  TouchableOpacity,
+  FlatList,
   SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
+  Modal,
   ScrollView,
-  Keyboard,
   Animated,
   Easing,
-  Image,
+  StatusBar,
+  Platform,
 } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-// Enhanced single-file IMC (BMI) calculator
-// - Updated categories and images per category
-// - Image displayed centered under the IMC + category
-// - Legend updated to 5 categories
+/*
+  TP : "Card" Produit - Version professionnelle
+  - Fichier unique : App.tsx
+  - Images locales attendues dans le même dossier :
+      Prod1.jpeg, Prod2.jpeg, Prod3.jpeg, Prod4.jpeg
+    (si vos fichiers ont une extension différente, adaptez require())
+  - Contraintes respectées : pas de position: 'absolute'
+  - Fonctionnalités ajoutées :
+      * Liste produit (FlatList)
+      * Carte produit fidèle au design (ombre, coins arrondis, image en haut)
+      * Titre + prix alignés (row + space-between)
+      * Description courte
+      * Bouton centré
+      * Détail produit en modal
+      * Animation d'appui sur la carte
+      * Accessibilité
+*/
+
+type Product = {
+  id: string;
+  title: string;
+  price: string;
+  description: string;
+  image: any;
+  rating?: number;
+};
+
+const PRODUCTS: Product[] = [
+  {
+    id: '1',
+    title: 'Baskets Vintage',
+    price: '89,99 €',
+    description: 'Baskets vintage, confortables et stylées pour tous les jours.',
+    image: require('./Prod1.jpeg'),
+    rating: 4.5,
+  },
+  {
+    id: '2',
+    title: 'Chaussures Running',
+    price: '129,00 €',
+    description: "Chaussures légères pensées pour la performance et le confort.",
+    image: require('./Prod2.jpeg'),
+    rating: 4.2,
+  },
+  {
+    id: '3',
+    title: 'Air Max Rouge',
+    price: '149,50 €',
+    description: 'Edition limitée, semelle amortissante.',
+    image: require('./Prod3.jpeg'),
+    rating: 4.8,
+  },
+  {
+    id: '4',
+    title: 'Sneakers Urbaines',
+    price: '99,00 €',
+    description: 'Design moderne adapté à la ville et aux longues marches.',
+    image: require('./Prod4.jpeg'),
+    rating: 4.1,
+  },
+];
 
 export default function App() {
-  const isDarkMode = useColorScheme() === 'dark';
+  const [selected, setSelected] = useState<Product | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+
+  const openDetails = (product: Product) => {
+    setSelected(product);
+    setModalVisible(true);
+  };
+
+  const closeDetails = () => {
+    setModalVisible(false);
+    setSelected(null);
+  };
+
+  const renderItem = ({item}: {item: Product}) => (
+    <ProductCard product={item} onPress={() => openDetails(item)} />
+  );
 
   return (
-    <SafeAreaProvider>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <SafeAreaView style={[styles.safe, isDarkMode && styles.safeDark]}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <ScrollView
-            contentContainerStyle={styles.scroll}
-            keyboardShouldPersistTaps="handled"
-          >
-            <IMCForm isDarkMode={isDarkMode} />
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </SafeAreaProvider>
+    <SafeAreaView style={styles.safe}>
+      <StatusBar barStyle="dark-content" />
+      <View style={styles.container}>
+        <Text style={styles.header}>Produits phares</Text>
+
+        <FlatList
+          data={PRODUCTS}
+          keyExtractor={(i) => i.id}
+          renderItem={renderItem}
+          contentContainerStyle={styles.list}
+          // vertical list; change to horizontal if you prefer
+          showsVerticalScrollIndicator={false}
+        />
+
+        {/* Modal détails produit */}
+        <Modal
+          visible={modalVisible}
+          animationType="slide"
+          onRequestClose={closeDetails}
+          transparent={Platform.OS === 'ios' ? true : false}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent} accessibilityRole="dialog">
+              <ScrollView>
+                {selected && (
+                  <>
+                    <Image source={selected.image} style={styles.modalImage} />
+                    <View style={styles.modalBody}>
+                      <View style={styles.row}>
+                        <Text style={styles.modalTitle}>{selected.title}</Text>
+                        <Text style={styles.price}>{selected.price}</Text>
+                      </View>
+
+                      <Text style={styles.modalDescription}>{selected.description}</Text>
+
+                      <TouchableOpacity
+                        style={styles.primaryButton}
+                        accessibilityLabel={`Acheter ${selected.title}`}
+                        onPress={() => {
+                          // ici on ferait l'ajout au panier
+                          closeDetails();
+                        }}>
+                        <Text style={styles.primaryButtonText}>Acheter maintenant</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.secondaryButton}
+                        onPress={closeDetails}
+                        accessibilityLabel="Fermer la fenêtre de détail">
+                        <Text style={styles.secondaryButtonText}>Fermer</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      </View>
+    </SafeAreaView>
   );
 }
 
-function IMCForm({ isDarkMode }) {
-  const [poids, setPoids] = useState('');
-  const [taille, setTaille] = useState('');
-  const [imc, setImc] = useState(null);
-  const [categorie, setCategorie] = useState('');
-  const [message, setMessage] = useState('');
-
-  // animations
-  const cardAnim = useRef(new Animated.Value(0)).current; // for entry
-  const valueAnim = useRef(new Animated.Value(0)).current; // for counting imc
-  const btnScale = useRef(new Animated.Value(1)).current; // press effect
-  const progress = useRef(new Animated.Value(0)).current; // progress bar
-
-  useEffect(() => {
-    // entry animation on mount
-    Animated.timing(cardAnim, {
-      toValue: 1,
-      duration: 600,
-      easing: Easing.out(Easing.exp),
-      useNativeDriver: true,
-    }).start();
-  }, [cardAnim]);
-
-  useEffect(() => {
-    // when imc changes animate the displayed number and progress
-    if (imc !== null) {
-      const numeric = parseFloat(imc);
-      valueAnim.setValue(0);
-      Animated.timing(valueAnim, {
-        toValue: numeric,
-        duration: 800,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false, // numeric animation (text) can't use native driver
-      }).start();
-
-      // map BMI to a progress [0..1] relative to [15 .. 40]
-      const min = 15;
-      const max = 40;
-      const clamped = Math.max(min, Math.min(max, numeric));
-      const pct = (clamped - min) / (max - min);
-      Animated.timing(progress, {
-        toValue: pct,
-        duration: 700,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }).start();
-    } else {
-      // reset progress
-      Animated.timing(progress, {
-        toValue: 0,
-        duration: 400,
-        useNativeDriver: false,
-      }).start();
-    }
-  }, [imc, valueAnim, progress]);
-
-  const calculerIMC = () => {
-    Keyboard.dismiss();
-    const p = parseFloat(poids.replace(',', '.'));
-    const t = parseFloat(taille.replace(',', '.')) / 100; // cm → m
-    if (isNaN(p) || isNaN(t) || t <= 0 || p <= 0) {
-      setMessage('Veuillez entrer des valeurs numériques valides (ex: 72, 175).');
-      setImc(null);
-      setCategorie('');
-      return;
-    }
-    setMessage('');
-    const resultat = p / (t * t);
-    const rounded = parseFloat(resultat.toFixed(2));
-    setImc(rounded);
-    setCategorie(getCategorie(rounded));
-  };
-
-  // Updated categories:
-  // Maigreur: IMC < 18.5
-  // Normal: 18.5 ≤ IMC < 25
-  // Surpoids: 25 ≤ IMC < 30
-  // Obésité modérée: 30 ≤ IMC < 40
-  // Obésité sévère: IMC ≥ 40
-  const getCategorie = (imcValue) => {
-    if (imcValue < 18.5) return 'Maigreur';
-    if (imcValue < 25) return 'Normal';
-    if (imcValue < 30) return 'Surpoids';
-    if (imcValue < 40) return 'Obésité modérée';
-    return 'Obésité sévère';
-  };
-
-  const getCategoryColor = (imcValue) => {
-    if (imcValue == null) return '#999';
-    if (imcValue < 18.5) return '#4A90E2'; // blue - maigreur
-    if (imcValue < 25) return '#2ECC71'; // green - normal
-    if (imcValue < 30) return '#F5A623'; // orange - surpoids
-    if (imcValue < 40) return '#FF7F50'; // coral - obésité modérée
-    return '#E74C3C'; // red - obésité sévère
-  };
-
-  // map category -> local image in same folder
-  const getCategoryImage = (category) => {
-    switch (category) {
-      case 'Maigreur':
-        return require('./Maigreur.png');
-      case 'Normal':
-        return require('./Normal.png');
-      case 'Surpoids':
-        return require('./Surpoids.png');
-      case 'Obésité modérée':
-        return require('./ObesiteModeree.png');
-      case 'Obésité sévère':
-        return require('./ObesiteSevere.png');
-      default:
-        return null;
-    }
-  };
+function ProductCard({product, onPress}: {product: Product; onPress: () => void}) {
+  const scale = useRef(new Animated.Value(1)).current;
 
   const onPressIn = () => {
-    Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: true }).start();
+    Animated.timing(scale, {
+      toValue: 0.98,
+      duration: 120,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
   };
   const onPressOut = () => {
-    Animated.spring(btnScale, { toValue: 1, friction: 3, useNativeDriver: true }).start();
+    Animated.timing(scale, {
+      toValue: 1,
+      duration: 160,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
   };
-
-  const reset = () => {
-    setPoids('');
-    setTaille('');
-    setImc(null);
-    setCategorie('');
-    setMessage('');
-  };
-
-  // interpolated styles
-  const cardTranslate = cardAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [30, 0],
-  });
-  const cardOpacity = cardAnim;
-
-  const displayedValue = valueAnim.interpolate({
-    inputRange: [0, 100],
-    outputRange: [0, 100],
-    extrapolate: 'clamp',
-  });
 
   return (
-    <Animated.View
-      style={[
-        styles.container,
-        { transform: [{ translateY: cardTranslate }], opacity: cardOpacity },
-      ]}
-    >
-      <Text style={[styles.title, isDarkMode && styles.titleDark]}>Calculateur d'IMC</Text>
+    <Animated.View style={[styles.cardWrapper, {transform: [{scale}]}]}>
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={onPress}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
+        accessibilityRole="button"
+        accessibilityLabel={`Voir détails ${product.title}`}>
+        <View style={styles.card}>
+          <Image source={product.image} style={styles.productImage} resizeMode="cover" />
 
-      <View style={styles.formRow}>
-        <TextInput
-          style={[styles.input, isDarkMode && styles.inputDark]}
-          placeholder="Poids (kg) — ex: 72"
-          placeholderTextColor={isDarkMode ? '#888' : '#999'}
-          keyboardType="numeric"
-          value={poids}
-          onChangeText={setPoids}
-          returnKeyType="next"
-          accessibilityLabel="Poids en kilogrammes"
-        />
-
-        <TextInput
-          style={[styles.input, isDarkMode && styles.inputDark]}
-          placeholder="Taille (cm) — ex: 175"
-          placeholderTextColor={isDarkMode ? '#888' : '#999'}
-          keyboardType="numeric"
-          value={taille}
-          onChangeText={setTaille}
-          returnKeyType="done"
-          accessibilityLabel="Taille en centimètres"
-        />
-      </View>
-
-      {message ? <Text style={styles.message}>{message}</Text> : null}
-
-      <View style={styles.buttonsRow}>
-        <Pressable
-          onPress={calculerIMC}
-          onPressIn={onPressIn}
-          onPressOut={onPressOut}
-          accessibilityRole="button"
-          accessibilityLabel="Calculer l'IMC"
-        >
-          <Animated.View style={[styles.button, { transform: [{ scale: btnScale }] }]}>
-            <Text style={styles.buttonText}>Calculer</Text>
-          </Animated.View>
-        </Pressable>
-
-        <Pressable onPress={reset} accessibilityRole="button">
-          <View style={styles.resetButton}>
-            <Text style={styles.resetText}>Réinitialiser</Text>
+          <View style={styles.row}>
+            <Text style={styles.title}>{product.title}</Text>
+            <Text style={styles.price}>{product.price}</Text>
           </View>
-        </Pressable>
-      </View>
 
-      {/* result area */}
-      <View style={styles.resultCard}>
-        <View style={styles.resultHeader}>
-          <Text style={styles.resultTitle}>Résultat</Text>
+          <Text style={styles.description} numberOfLines={2} ellipsizeMode="tail">
+            {product.description}
+          </Text>
+
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() => {
+              // action d'achat rapide
+              onPress();
+            }}
+            accessibilityLabel={`Acheter ${product.title}`}>
+            <Text style={styles.primaryButtonText}>Acheter maintenant</Text>
+          </TouchableOpacity>
         </View>
-
-        <View style={styles.resultBody}>
-          <View style={styles.resultLeft}>
-            <Text style={styles.imcLabel}>IMC</Text>
-
-            <Animated.Text
-              style={[
-                styles.imcValue,
-                { color: getCategoryColor(imc) },
-              ]}
-            >
-              {imc === null ? '--' : imc.toFixed ? imc.toFixed(2) : imc}
-            </Animated.Text>
-
-            <Text style={styles.categoryText}>{categorie || "-"}</Text>
-
-            {/* image centered under the result */}
-            {categorie ? (
-              <Image
-                source={getCategoryImage(categorie)}
-                style={styles.categoryImage}
-                accessible
-                accessibilityLabel={`Image illustrant la catégorie ${categorie}`}
-              />
-            ) : null}
-          </View>
-
-          <View style={styles.resultRight}>
-            <View style={styles.progressTrack}>
-              <Animated.View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
-                    backgroundColor: getCategoryColor(imc),
-                  },
-                ]}
-              />
-            </View>
-
-            <View style={styles.legendRow}>
-              <Legend color="#4A90E2" label="Maigreur" />
-              <Legend color="#2ECC71" label="Normal" />
-              <Legend color="#F5A623" label="Surpoids" />
-              <Legend color="#FF7F50" label="Obésité modérée" />
-              <Legend color="#E74C3C" label="Obésité sévère" />
-            </View>
-
-            <View style={styles.tipsBox}>
-              <Text style={styles.tipsTitle}>Conseil</Text>
-              <Text style={styles.tipsText}>{pickTip(categorie)}</Text>
-            </View>
-          </View>
-        </View>
-      </View>
-
-      <Text style={styles.footer}>Conçu avec ❤️ — Entrez des chiffres et appuyez sur Calculer</Text>
+      </TouchableOpacity>
     </Animated.View>
   );
 }
 
-function Legend({ color, label }) {
-  return (
-    <View style={styles.legendItem}>
-      <View style={[styles.legendDot, { backgroundColor: color }]} />
-      <Text style={styles.legendLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function pickTip(category) {
-  switch (category) {
-    case 'Maigreur':
-      return "Augmentez légèrement l'apport calorique et privilégiez les aliments riches en nutriments.";
-    case 'Normal':
-      return "Continuez votre mode de vie — alimentation équilibrée + activité régulière.";
-    case 'Surpoids':
-      return "Réduisez les aliments transformés, bougez plus — consultez un professionnel si besoin.";
-    case 'Obésité modérée':
-      return "Adoptez une alimentation contrôlée et augmentez l'activité physique ; demandez un suivi si nécessaire.";
-    case 'Obésité sévère':
-      return "Consultez un professionnel de santé pour un accompagnement médical et un plan adapté.";
-    default:
-      return "Entrez vos informations puis appuyez sur Calculer pour obtenir des conseils.";
-  }
-}
-
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F5F7FA' },
-  safeDark: { backgroundColor: '#0F1720' },
-  scroll: { flexGrow: 1 },
-  container: {
-    flex: 1,
-    padding: 20,
+  safe: {flex: 1, backgroundColor: '#f2f4f7'},
+  container: {flex: 1, paddingHorizontal: 20, paddingTop: 18},
+  header: {fontSize: 26, fontWeight: '700', marginBottom: 12, color: '#111'},
+  list: {paddingBottom: 30},
+
+  /* Card */
+  cardWrapper: {marginBottom: 18},
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 12,
+    // ombre iOS
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 6},
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    // ombre Android
+    elevation: 6,
+  },
+  productImage: {width: '100%', height: 180, borderRadius: 10, marginBottom: 10},
+
+  row: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
+  title: {fontSize: 17, fontWeight: '700', color: '#111', flex: 1, marginRight: 8},
+  price: {fontSize: 17, fontWeight: '700', color: '#d32f2f'},
+  description: {fontSize: 13, color: '#666', marginTop: 8},
+
+  primaryButton: {
+    backgroundColor: '#2e8b57',
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 12,
     alignItems: 'center',
   },
-  title: { fontSize: 28, fontWeight: '800', marginTop: 10, marginBottom: 18, color: '#111' },
-  titleDark: { color: '#fff' },
-  formRow: { width: '100%', gap: 10 },
-  input: {
-    width: '100%',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 14 : 10,
-    backgroundColor: '#fff',
-    fontSize: 16,
-    marginBottom: 8,
-  },
-  inputDark: { backgroundColor: '#0b1220', borderColor: '#203040', color: '#fff' },
-  message: { color: '#cc0000', marginBottom: 8 },
-  buttonsRow: { flexDirection: 'row', width: '100%', justifyContent: 'space-between', marginTop: 6 },
-  button: {
-    backgroundColor: '#2563eb',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
-  },
-  buttonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  resetButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    justifyContent: 'center',
-  },
-  resetText: { color: '#334155', fontWeight: '600' },
-  resultCard: {
-    width: '100%',
-    marginTop: 20,
-    borderRadius: 14,
-    padding: 14,
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
-  },
-  resultHeader: { marginBottom: 8 },
-  resultTitle: { fontSize: 16, fontWeight: '700' },
-  resultBody: { flexDirection: 'row', gap: 10 },
-  resultLeft: { width: '40%', alignItems: 'center', justifyContent: 'center' },
-  imcLabel: { fontSize: 12, color: '#94a3b8' },
-  imcValue: { fontSize: 36, fontWeight: '900', marginTop: 4 },
-  categoryText: { fontSize: 14, marginTop: 6, color: '#334155', fontWeight: '600', textAlign: 'center' },
-  // image style for category illustration
-  categoryImage: {
-    width: 120,
-    height: 120,
-    resizeMode: 'contain',
+  primaryButtonText: {color: '#fff', fontWeight: '700', fontSize: 15},
+
+  secondaryButton: {
+    paddingVertical: 10,
+    borderRadius: 10,
     marginTop: 10,
+    alignItems: 'center',
   },
-  resultRight: { width: '60%', paddingLeft: 10 },
-  progressTrack: {
-    height: 12,
-    backgroundColor: '#eef2f7',
-    borderRadius: 999,
+  secondaryButtonText: {color: '#2e8b57', fontWeight: '700'},
+
+  /* Modal */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(0,0,0,0.25)' : '#fff',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
     overflow: 'hidden',
+    // ombre
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 6},
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 8,
+    maxHeight: '90%'
   },
-  progressFill: {
-    height: '100%',
-    width: '0%',
-    borderRadius: 999,
-  },
-  legendRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around', marginTop: 12 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 4 },
-  legendDot: { width: 10, height: 10, borderRadius: 5 },
-  legendLabel: { fontSize: 12, color: '#475569' },
-  tipsBox: { marginTop: 12, backgroundColor: '#f8fafc', padding: 10, borderRadius: 10 },
-  tipsTitle: { fontWeight: '700', marginBottom: 6 },
-  tipsText: { fontSize: 13, color: '#334155' },
-  footer: { marginTop: 18, color: '#64748b' },
+  modalImage: {width: '100%', height: 250},
+  modalBody: {padding: 16},
+  modalTitle: {fontSize: 20, fontWeight: '800', flex: 1},
+  modalDescription: {color: '#555', marginTop: 10, fontSize: 14},
 });
